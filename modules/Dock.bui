@@ -1,0 +1,122 @@
+''' Dock effects are opt-in and available only in a macOS desktop process.
+Public Function DockSupported() As Boolean
+    #If TargetMac Then
+        Return Not Application.IsHeadless
+    #Else
+        Return False
+    #End If
+End Function
+
+#If TargetMac Then
+    Private Declare Function NativeClass Lib "objc" Alias "objc_getClass" (name As String) As Ptr
+    Private Declare Function SharedApp Lib "AppKit" Selector "sharedApplication" (cls As Ptr) As Ptr
+    Private Declare Function NativeDockTile Lib "AppKit" Selector "dockTile" (app As Ptr) As Ptr
+    Private Declare Function NativeBadge Lib "AppKit" Selector "badgeLabel" (tile As Ptr) As Ptr
+    Private Declare Sub NativeSetBadge Lib "AppKit" Selector "setBadgeLabel:" (tile As Ptr, label As Ptr)
+    Private Declare Sub ReleaseObject Lib "CoreFoundation" Alias "CFRelease" (value As Ptr)
+    Private Declare Function IsMainThread Lib "Foundation" Selector "isMainThread" (cls As Ptr) As Boolean
+    Private Declare Function NativeAttention Lib "AppKit" Selector "requestUserAttention:" (app As Ptr, requestType As Integer) As Integer
+    Private Declare Sub NativeCancelAttention Lib "AppKit" Selector "cancelUserAttentionRequest:" (app As Ptr, request As Integer)
+
+    Private Sub RequireDockThread()
+        If Not DockSupported() Then Throw New UnsupportedOperationException("Dock requires a macOS desktop session")
+        If Not IsMainThread(NativeClass("NSThread")) Then Throw New InvalidArgumentException("Dock operations require the main thread")
+    End Sub
+#End If
+
+Public Function DockBadge() As String
+    #If TargetMac Then
+        RequireDockThread()
+        Dim badge As Ptr = NativeBadge(NativeDockTile(SharedApp(NativeClass("NSApplication"))))
+        If badge = Nil Then Return ""
+        Return CType(CType(badge, CFStringRef), String)
+    #Else
+        Throw New UnsupportedOperationException("Dock is available only on macOS")
+    #End If
+End Function
+
+Public Sub SetDockBadge(label As String)
+    #If TargetMac Then
+        RequireDockThread()
+        Dim text As CFStringRef = CType(label, CFStringRef)
+        Try
+            NativeSetBadge(NativeDockTile(SharedApp(NativeClass("NSApplication"))), text)
+        Finally
+            ReleaseObject(text)
+        End Try
+    #Else
+        Throw New UnsupportedOperationException("Dock is available only on macOS")
+    #End If
+End Sub
+
+Public Sub SetDockBadgeCount(count As Integer, maximum As Integer = 99)
+    If count < 0 Or maximum < 1 Then Throw New InvalidArgumentException("Count must be nonnegative and maximum positive")
+    If count = 0 Then
+        SetDockBadge("")
+    ElseIf count > maximum Then
+        SetDockBadge(Str(maximum) + "+")
+    Else
+        SetDockBadge(Str(count))
+    End If
+End Sub
+
+#If TargetMac Then
+    Private Class AttentionCleanup
+        Public Shared Property Guard As Mutex = New Mutex()
+        Public Shared Property Pending As Array Of Integer = []
+    End Class
+    Private Sub DrainAttentionCleanup()
+        Dim pending As Array Of Integer = []
+        SyncLock AttentionCleanup.Guard
+            pending = AttentionCleanup.Pending
+            AttentionCleanup.Pending = []
+        End SyncLock
+        For Each request As Integer In pending
+            NativeCancelAttention(SharedApp(NativeClass("NSApplication")), request)
+        Next
+    End Sub
+    Private Sub RetireAttention(request As Integer)
+        If IsMainThread(NativeClass("NSThread")) Then
+            NativeCancelAttention(SharedApp(NativeClass("NSApplication")), request)
+        Else
+            SyncLock AttentionCleanup.Guard
+                Array.Append(AttentionCleanup.Pending, request)
+            End SyncLock
+            MainThread.InvokeAsync(AddressOf DrainAttentionCleanup)
+        End If
+    End Sub
+#End If
+
+''' Keep this handle and Close it on the main thread when attention is no longer needed.
+Public Class DockAttentionRequest
+    Private Property RequestID As Integer = -1
+    Public Property IsClosed As Boolean
+        Get
+            Return Me.RequestID < 0
+        End Get
+    End Property
+
+    Public Sub Constructor(critical As Boolean = False)
+        #If TargetMac Then
+            RequireDockThread()
+            Dim requestType As Integer = 10
+            If critical Then requestType = 0
+            Me.RequestID = NativeAttention(SharedApp(NativeClass("NSApplication")), requestType)
+        #Else
+            Throw New UnsupportedOperationException("Dock is available only on macOS")
+        #End If
+    End Sub
+
+    Public Sub Close()
+        If Me.RequestID < 0 Then Return
+        #If TargetMac Then
+            Dim request As Integer = Me.RequestID
+            Me.RequestID = -1
+            RetireAttention(request)
+        #End If
+    End Sub
+
+    Public Sub Destructor()
+        Me.Close()
+    End Sub
+End Class
