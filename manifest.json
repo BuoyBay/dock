@@ -2,7 +2,7 @@
     "schema": 1,
     "name": "dock",
     "version": "0.1.0",
-    "description": "macOS Dock badges and attention requests",
+    "description": "Dock badges and bounce",
     "platforms": [
         "arm64-apple-macos",
         "x86_64-apple-macos",
