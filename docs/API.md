@@ -24,9 +24,3 @@ longer needs attention. The destructor explicitly queues cleanup to the UI threa
 if the last reference is released by a worker. Still use explicit Close for prompt
 cancellation while the app run loop is alive. Badges are app-wide shared state, not a per-window resource, so the
 package does not restore a badge behind another component's back.
-
-## Verification
-
-
-Maintainers run the private validation suite before release. See the repository README for public build instructions.
-
