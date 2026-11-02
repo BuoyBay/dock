@@ -1,4 +1,4 @@
-# Control macOS Dock badges and attention requests
+# macOS Dock badges and attention requests
 
 Opt-in macOS Dock badges and cancellable attention requests. `Import dock`.
 No Dock effect occurs merely by importing the package or asking `DockSupported()`.
