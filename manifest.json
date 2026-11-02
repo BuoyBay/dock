@@ -2,7 +2,7 @@
   "schema": 1,
   "name": "dock",
   "version": "0.1.0",
-  "description": "macOS Dock badge and scoped attention-request control",
+  "description": "Control macOS Dock badges and attention requests",
   "platforms": [
     "arm64-apple-macos",
     "x86_64-apple-macos",
